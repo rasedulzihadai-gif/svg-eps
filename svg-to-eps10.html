@@ -1,0 +1,1078 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SVG → EPS 10 Converter (with JPG preview)</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  :root{
+    --bg:#f6f5f1; --card:#ffffff; --ink:#1d1d1b; --muted:#6b6a64; --line:#e3e1d9;
+    --accent:#2b59ff; --accent-ink:#ffffff; --ok:#1a7f45; --okbg:#e5f5ec; --warn:#9a5b00; --warnbg:#fff3dc;
+    --bad:#b3261e; --badbg:#fdeceb; --drop:#eef1ff;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#131315; --card:#1c1c20; --ink:#ececea; --muted:#9a9a94; --line:#2f2f35;
+      --accent:#6f8cff; --accent-ink:#0b0f24; --ok:#5fd28e; --okbg:#173425; --warn:#f0b35a; --warnbg:#382b13;
+      --bad:#ff8f87; --badbg:#3a1a18; --drop:#1d2140;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#131315; --card:#1c1c20; --ink:#ececea; --muted:#9a9a94; --line:#2f2f35;
+    --accent:#6f8cff; --accent-ink:#0b0f24; --ok:#5fd28e; --okbg:#173425; --warn:#f0b35a; --warnbg:#382b13;
+    --bad:#ff8f87; --badbg:#3a1a18; --drop:#1d2140;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;padding:28px 16px 80px}
+  .wrap{max-width:920px;margin:0 auto}
+  h1{font-size:26px;margin:0 0 4px;letter-spacing:-.01em}
+  .sub{color:var(--muted);margin:0 0 22px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px}
+  .settings{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px 18px;margin-bottom:16px}
+  .field label.lbl{display:block;font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px}
+  .field .row{display:flex;gap:6px;align-items:center}
+  input[type=number],select{width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:inherit}
+  .check{display:flex;gap:8px;align-items:flex-start;font-size:14px;margin-top:2px}
+  .check input{margin-top:4px}
+  .hint{font-size:12px;color:var(--muted);margin-top:4px}
+  .drop{margin-top:16px;border:2px dashed var(--line);border-radius:14px;padding:38px 16px;text-align:center;cursor:pointer;transition:.15s;background:var(--card)}
+  .drop.over{background:var(--drop);border-color:var(--accent)}
+  .drop b{font-size:17px}
+  .drop p{margin:6px 0 0;color:var(--muted)}
+  button{font:inherit;cursor:pointer;border-radius:9px;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:8px 14px}
+  button:hover{border-color:var(--accent)}
+  button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
+  button:disabled{opacity:.5;cursor:default}
+  .bar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin:26px 0 10px}
+  .bar h2{margin:0;font-size:18px}
+  .item{display:grid;grid-template-columns:200px 1fr;gap:16px;margin-bottom:12px}
+  @media (max-width:640px){ .item{grid-template-columns:1fr} }
+  .thumb{background:repeating-conic-gradient(#0000000d 0% 25%, transparent 0% 50%) 50%/16px 16px;border:1px solid var(--line);border-radius:10px;display:flex;align-items:center;justify-content:center;min-height:130px;overflow:hidden}
+  .thumb img{max-width:100%;max-height:200px;display:block}
+  .name{font-weight:600;word-break:break-all}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+  .chip{font-size:12.5px;padding:3px 9px;border-radius:99px;background:var(--bg);border:1px solid var(--line)}
+  .chip.ok{background:var(--okbg);color:var(--ok);border-color:transparent}
+  .chip.bad{background:var(--badbg);color:var(--bad);border-color:transparent}
+  .chip.warn{background:var(--warnbg);color:var(--warn);border-color:transparent}
+  .warns{margin:8px 0;padding:8px 12px;border-radius:9px;background:var(--warnbg);color:var(--warn);font-size:13px}
+  .warns div+div{margin-top:3px}
+  .err{padding:10px 12px;border-radius:9px;background:var(--badbg);color:var(--bad);font-size:14px}
+  .actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+  .note{font-size:13px;color:var(--muted);margin-top:14px}
+  .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:14px;opacity:0;pointer-events:none;transition:.2s;max-width:90vw;z-index:9}
+  .toast.show{opacity:1}
+  .busy{color:var(--muted)}
+  .spin{display:inline-block;width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px;margin-right:6px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>SVG → EPS converter</h1>
+  <p class="sub">Drop SVG files, get an RGB vector EPS (0.5–80 MB) plus a same-name JPG preview (both sides 2000+ px), ready for Freepik. Everything runs in your browser — files are never uploaded.</p>
+
+  <div class="card">
+    <div class="settings">
+      <div class="field">
+        <label class="lbl" for="mode">EPS colour mode</label>
+        <select id="mode"><option value="rgb">RGB</option><option value="cmyk">CMYK (simple conversion)</option></select>
+      </div>
+      <div class="field">
+        <label class="lbl" for="hdr">EPS header</label>
+        <select id="hdr"><option value="generic">Standard EPS (recommended — opens in Illustrator)</option><option value="ai">Claims "Illustrator 10" (experimental)</option></select>
+        <div class="hint">Use Standard, open it in Illustrator, then Save As → EPS → Illustrator 10</div>
+      </div>
+      <div class="field">
+        <label class="lbl" for="target">Artboard longest side (pt)</label>
+        <input id="target" type="number" min="0" step="1" value="0">
+        <div class="hint">0 = keep the SVG's own size</div>
+      </div>
+      <div class="field">
+        <label class="lbl" for="minpx">Preview min. shortest side (px)</label>
+        <input id="minpx" type="number" min="100" max="10000" step="50" value="2000">
+        <div class="hint">Both sides will be ≥ this and ≤ 10000 px (Freepik rule)</div>
+      </div>
+      <div class="field">
+        <label class="lbl" for="minsize">JPG min. file size (optional)</label>
+        <div class="row">
+          <input id="minsize" type="number" min="0" step="0.1" value="0">
+          <select id="unit" style="width:90px"><option value="MB">MB</option><option value="KB">KB</option></select>
+        </div>
+        <div class="hint">0 = none. Freepik has no JPG size minimum</div>
+      </div>
+      <div class="field">
+        <label class="lbl" for="epsmin">EPS min. file size (MB)</label>
+        <input id="epsmin" type="number" min="0" max="80" step="0.1" value="0.5">
+        <label class="check"><input type="checkbox" id="epspad" checked><span>Embed a standard preview bitmap to reach it</span></label>
+        <div class="hint">Freepik: EPS must be 0.5–80 MB</div>
+      </div>
+      <div class="field">
+        <label class="lbl">If JPG is still too small</label>
+        <label class="check"><input type="checkbox" id="enlarge" checked><span>Enlarge pixels (up to 2×)</span></label>
+        <label class="check"><input type="checkbox" id="grain" checked><span>Add invisible grain (last resort)</span></label>
+      </div>
+    </div>
+    <div style="font-size:13px;color:var(--muted)">Gradients are expanded into smooth blended vector steps, and transparency is flattened onto white, because plain EPS has no live gradients or opacity.</div>
+  </div>
+
+  <div class="drop" id="drop" tabindex="0" role="button" aria-label="Choose SVG files">
+    <b>Drop SVG files here</b>
+    <p>or click to browse — batch conversion supported</p>
+    <input id="file" type="file" accept=".svg,image/svg+xml" multiple hidden>
+  </div>
+
+  <div id="results"></div>
+  <div class="note" id="dlnote"></div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+/* ============================================================
+   Utilities
+   ============================================================ */
+const $ = s => document.querySelector(s);
+const XLINK = 'http://www.w3.org/1999/xlink';
+const GSTEPS = 64;                       // blend steps used to expand gradients
+const f3 = n => String(+n.toFixed(3));
+const f4 = n => String(+n.toFixed(4));
+const clamp01 = v => Math.max(0, Math.min(1, v));
+
+function el(tag, props, ...kids) {
+  const e = document.createElement(tag);
+  for (const k in (props || {})) {
+    if (k === 'class') e.className = props[k];
+    else if (k.startsWith('on')) e.addEventListener(k.slice(2), props[k]);
+    else if (k === 'text') e.textContent = props[k];
+    else e.setAttribute(k, props[k]);
+  }
+  kids.flat().forEach(c => { if (c == null || c === false) return; e.append(c.nodeType ? c : document.createTextNode(String(c))); });
+  return e;
+}
+function fmtBytes(n) {
+  if (n < 1024) return n + ' B';
+  if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
+  return (n / 1048576).toFixed(2) + ' MB';
+}
+let toastTimer;
+function toast(msg) {
+  const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 3500);
+}
+
+/* ---------- matrices: [a b c d e f], point -> (a x + c y + e, b x + d y + f) ---------- */
+const IDM = [1, 0, 0, 1, 0, 0];
+const mul = (m, n) => [
+  m[0]*n[0] + m[2]*n[1], m[1]*n[0] + m[3]*n[1],
+  m[0]*n[2] + m[2]*n[3], m[1]*n[2] + m[3]*n[3],
+  m[0]*n[4] + m[2]*n[5] + m[4], m[1]*n[4] + m[3]*n[5] + m[5]
+];
+const app = (m, x, y) => [m[0]*x + m[2]*y + m[4], m[1]*x + m[3]*y + m[5]];
+function inv(m) {
+  const d = m[0]*m[3] - m[1]*m[2];
+  if (!d || !isFinite(d)) return null;
+  return [m[3]/d, -m[1]/d, -m[2]/d, m[0]/d, (m[2]*m[5] - m[3]*m[4])/d, (m[1]*m[4] - m[0]*m[5])/d];
+}
+function parseTransform(str) {
+  let m = IDM;
+  if (!str) return m;
+  const re = /(matrix|translate|scale|rotate|skewX|skewY)\s*\(([^)]*)\)/g;
+  let k;
+  while ((k = re.exec(str))) {
+    const a = k[2].trim().split(/[\s,]+/).filter(Boolean).map(Number);
+    const v = (i, d) => (a[i] === undefined || isNaN(a[i])) ? d : a[i];
+    let t = IDM;
+    switch (k[1]) {
+      case 'matrix': t = a.length === 6 && a.every(isFinite) ? a : IDM; break;
+      case 'translate': t = [1, 0, 0, 1, v(0, 0), v(1, 0)]; break;
+      case 'scale': t = [v(0, 1), 0, 0, v(1, v(0, 1)), 0, 0]; break;
+      case 'rotate': {
+        const r = v(0, 0) * Math.PI / 180, c = Math.cos(r), s = Math.sin(r);
+        t = [c, s, -s, c, 0, 0];
+        if (a.length >= 3) t = mul(mul([1, 0, 0, 1, a[1], a[2]], t), [1, 0, 0, 1, -a[1], -a[2]]);
+        break;
+      }
+      case 'skewX': t = [1, 0, Math.tan(v(0, 0) * Math.PI / 180), 1, 0, 0]; break;
+      case 'skewY': t = [1, Math.tan(v(0, 0) * Math.PI / 180), 0, 1, 0, 0]; break;
+    }
+    m = mul(m, t);
+  }
+  return m;
+}
+
+/* ---------- colour ---------- */
+const cvs1 = document.createElement('canvas'); cvs1.width = cvs1.height = 1;
+const cctx = cvs1.getContext('2d');
+function parseColor(str) {
+  if (!str) return null;
+  cctx.fillStyle = '#000'; cctx.fillStyle = str; const a = cctx.fillStyle;
+  cctx.fillStyle = '#fff'; cctx.fillStyle = str; const b = cctx.fillStyle;
+  if (a !== b) return null;                       // invalid colour string
+  if (a[0] === '#') {
+    return { r: parseInt(a.substr(1, 2), 16), g: parseInt(a.substr(3, 2), 16), b: parseInt(a.substr(5, 2), 16), a: 1 };
+  }
+  const m = /rgba?\(([^)]+)\)/.exec(a);
+  if (!m) return null;
+  const p = m[1].split(',').map(s => parseFloat(s));
+  return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 };
+}
+const blend = (c, a) => ({ r: c.r * a + 255 * (1 - a), g: c.g * a + 255 * (1 - a), b: c.b * a + 255 * (1 - a) });
+function toCMYK(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const k = 1 - Math.max(r, g, b);
+  if (k >= 1) return [0, 0, 0, 1];
+  return [(1 - r - k) / (1 - k), (1 - g - k) / (1 - k), (1 - b - k) / (1 - k), k];
+}
+
+/* ============================================================
+   Path geometry
+   ============================================================ */
+function arcToCubics(x1, y1, rx, ry, phiDeg, fa, fs, x2, y2) {
+  if (x1 === x2 && y1 === y2) return [];
+  rx = Math.abs(rx); ry = Math.abs(ry);
+  if (!rx || !ry) return null;
+  const phi = phiDeg * Math.PI / 180, cp = Math.cos(phi), sp = Math.sin(phi);
+  const dx = (x1 - x2) / 2, dy = (y1 - y2) / 2;
+  const x1p = cp * dx + sp * dy, y1p = -sp * dx + cp * dy;
+  const lam = (x1p * x1p) / (rx * rx) + (y1p * y1p) / (ry * ry);
+  if (lam > 1) { const s = Math.sqrt(lam); rx *= s; ry *= s; }
+  const num = rx*rx*ry*ry - rx*rx*y1p*y1p - ry*ry*x1p*x1p;
+  const den = rx*rx*y1p*y1p + ry*ry*x1p*x1p;
+  let co = den === 0 ? 0 : Math.sqrt(Math.max(0, num / den));
+  if (fa === fs) co = -co;
+  const cxp = co * rx * y1p / ry, cyp = -co * ry * x1p / rx;
+  const cx = cp * cxp - sp * cyp + (x1 + x2) / 2, cy = sp * cxp + cp * cyp + (y1 + y2) / 2;
+  const ang = (ux, uy, vx, vy) => Math.atan2(ux * vy - uy * vx, ux * vx + uy * vy);
+  const th1 = ang(1, 0, (x1p - cxp) / rx, (y1p - cyp) / ry);
+  let dth = ang((x1p - cxp) / rx, (y1p - cyp) / ry, (-x1p - cxp) / rx, (-y1p - cyp) / ry);
+  if (!fs && dth > 0) dth -= 2 * Math.PI; else if (fs && dth < 0) dth += 2 * Math.PI;
+  const nseg = Math.max(1, Math.ceil(Math.abs(dth) / (Math.PI / 2) - 1e-9));
+  const delta = dth / nseg, t = 4 / 3 * Math.tan(delta / 4);
+  const out = [];
+  let a = th1;
+  const map = (px, py) => [cx + cp * rx * px - sp * ry * py, cy + sp * rx * px + cp * ry * py];
+  for (let i = 0; i < nseg; i++) {
+    const cA = Math.cos(a), sA = Math.sin(a), cB = Math.cos(a + delta), sB = Math.sin(a + delta);
+    const c1 = map(cA - t * sA, sA + t * cA), c2 = map(cB + t * sB, sB - t * cB), p = map(cB, sB);
+    out.push([c1[0], c1[1], c2[0], c2[1], p[0], p[1]]);
+    a += delta;
+  }
+  out[out.length - 1][4] = x2; out[out.length - 1][5] = y2;
+  return out;
+}
+
+function parsePathData(d) {
+  const segs = [];
+  const n = d.length;
+  let i = 0, cx = 0, cy = 0, sx = 0, sy = 0, lcx = 0, lcy = 0, prev = '';
+  const NUM = /[-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?/y;
+  const skip = () => { while (i < n && /[\s,]/.test(d[i])) i++; };
+  const num = () => {
+    skip(); NUM.lastIndex = i;
+    const m = NUM.exec(d);
+    if (!m) throw new Error('bad number');
+    i = NUM.lastIndex; return parseFloat(m[0]);
+  };
+  const flag = () => { skip(); const c = d[i]; if (c === '0' || c === '1') { i++; return +c; } throw new Error('bad flag'); };
+  let cmd = null;
+  try {
+    while (true) {
+      skip();
+      if (i >= n) break;
+      const ch = d[i];
+      if (/[a-zA-Z]/.test(ch)) {
+        cmd = ch; i++;
+        if (cmd === 'Z' || cmd === 'z') { if (segs.length) segs.push(['Z']); cx = sx; cy = sy; prev = 'Z'; continue; }
+      } else if (cmd === null || cmd === 'Z' || cmd === 'z') break;
+      if (!segs.length && cmd.toUpperCase() !== 'M') break;
+      const rel = cmd === cmd.toLowerCase();
+      const C = cmd.toUpperCase();
+      switch (C) {
+        case 'M': { let x = num(), y = num(); if (rel) { x += cx; y += cy; } segs.push(['M', x, y]); cx = sx = x; cy = sy = y; cmd = rel ? 'l' : 'L'; prev = 'M'; break; }
+        case 'L': { let x = num(), y = num(); if (rel) { x += cx; y += cy; } segs.push(['L', x, y]); cx = x; cy = y; prev = 'L'; break; }
+        case 'H': { let x = num(); if (rel) x += cx; segs.push(['L', x, cy]); cx = x; prev = 'L'; break; }
+        case 'V': { let y = num(); if (rel) y += cy; segs.push(['L', cx, y]); cy = y; prev = 'L'; break; }
+        case 'C': {
+          let x1 = num(), y1 = num(), x2 = num(), y2 = num(), x = num(), y = num();
+          if (rel) { x1 += cx; y1 += cy; x2 += cx; y2 += cy; x += cx; y += cy; }
+          segs.push(['C', x1, y1, x2, y2, x, y]); lcx = x2; lcy = y2; cx = x; cy = y; prev = 'C'; break;
+        }
+        case 'S': {
+          let x2 = num(), y2 = num(), x = num(), y = num();
+          if (rel) { x2 += cx; y2 += cy; x += cx; y += cy; }
+          const x1 = (prev === 'C') ? 2 * cx - lcx : cx, y1 = (prev === 'C') ? 2 * cy - lcy : cy;
+          segs.push(['C', x1, y1, x2, y2, x, y]); lcx = x2; lcy = y2; cx = x; cy = y; prev = 'C'; break;
+        }
+        case 'Q': {
+          let qx = num(), qy = num(), x = num(), y = num();
+          if (rel) { qx += cx; qy += cy; x += cx; y += cy; }
+          segs.push(['C', cx + 2/3 * (qx - cx), cy + 2/3 * (qy - cy), x + 2/3 * (qx - x), y + 2/3 * (qy - y), x, y]);
+          lcx = qx; lcy = qy; cx = x; cy = y; prev = 'Q'; break;
+        }
+        case 'T': {
+          let x = num(), y = num(); if (rel) { x += cx; y += cy; }
+          const qx = (prev === 'Q') ? 2 * cx - lcx : cx, qy = (prev === 'Q') ? 2 * cy - lcy : cy;
+          segs.push(['C', cx + 2/3 * (qx - cx), cy + 2/3 * (qy - cy), x + 2/3 * (qx - x), y + 2/3 * (qy - y), x, y]);
+          lcx = qx; lcy = qy; cx = x; cy = y; prev = 'Q'; break;
+        }
+        case 'A': {
+          const rx = num(), ry = num(), rot = num(), fa = flag(), fs = flag();
+          let x = num(), y = num(); if (rel) { x += cx; y += cy; }
+          const cs = arcToCubics(cx, cy, rx, ry, rot, fa, fs, x, y);
+          if (cs === null) segs.push(['L', x, y]); else for (const c of cs) segs.push(['C', ...c]);
+          cx = x; cy = y; prev = 'A'; break;
+        }
+        default: i = n;
+      }
+    }
+  } catch (e) { /* keep what was parsed so far, like browsers do */ }
+  return segs;
+}
+
+const K = 0.5522847498;
+function ellipseSegs(cx, cy, rx, ry) {
+  return [['M', cx + rx, cy],
+    ['C', cx + rx, cy + K*ry, cx + K*rx, cy + ry, cx, cy + ry],
+    ['C', cx - K*rx, cy + ry, cx - rx, cy + K*ry, cx - rx, cy],
+    ['C', cx - rx, cy - K*ry, cx - K*rx, cy - ry, cx, cy - ry],
+    ['C', cx + K*rx, cy - ry, cx + rx, cy - K*ry, cx + rx, cy], ['Z']];
+}
+function rectSegs(x, y, w, h, rx, ry) {
+  if (!rx || !ry) return [['M', x, y], ['L', x + w, y], ['L', x + w, y + h], ['L', x, y + h], ['Z']];
+  const kx = K * rx, ky = K * ry;
+  return [['M', x + rx, y], ['L', x + w - rx, y],
+    ['C', x + w - rx + kx, y, x + w, y + ry - ky, x + w, y + ry], ['L', x + w, y + h - ry],
+    ['C', x + w, y + h - ry + ky, x + w - rx + kx, y + h, x + w - rx, y + h], ['L', x + rx, y + h],
+    ['C', x + rx - kx, y + h, x, y + h - ry + ky, x, y + h - ry], ['L', x, y + ry],
+    ['C', x, y + ry - ky, x + rx - kx, y, x + rx, y], ['Z']];
+}
+function xformSegs(segs, m) {
+  return segs.map(s => {
+    if (s[0] === 'Z') return s;
+    const o = [s[0]];
+    for (let i = 1; i < s.length; i += 2) { const p = app(m, s[i], s[i + 1]); o.push(p[0], p[1]); }
+    return o;
+  });
+}
+function bboxOf(segs) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const s of segs) for (let i = 1; i < s.length; i += 2) {
+    x0 = Math.min(x0, s[i]); x1 = Math.max(x1, s[i]); y0 = Math.min(y0, s[i + 1]); y1 = Math.max(y1, s[i + 1]);
+  }
+  return { x0, y0, x1, y1 };
+}
+function psPath(segs) {
+  const o = ['newpath'];
+  for (const s of segs) {
+    if (s[0] === 'M') o.push(f3(s[1]) + ' ' + f3(s[2]) + ' moveto');
+    else if (s[0] === 'L') o.push(f3(s[1]) + ' ' + f3(s[2]) + ' lineto');
+    else if (s[0] === 'C') o.push(s.slice(1).map(f3).join(' ') + ' curveto');
+    else o.push('closepath');
+  }
+  return o.join('\n');
+}
+const polySegs = pts => [['M', pts[0][0], pts[0][1]], ...pts.slice(1).map(p => ['L', p[0], p[1]]), ['Z']];
+
+/* ============================================================
+   CSS / style handling (own resolver, so the SVG can never leak styles into this page)
+   ============================================================ */
+const INHERIT = ['fill', 'fill-opacity', 'fill-rule', 'stroke', 'stroke-width', 'stroke-opacity', 'stroke-linecap',
+  'stroke-linejoin', 'stroke-miterlimit', 'stroke-dasharray', 'stroke-dashoffset', 'color', 'visibility', 'clip-rule'];
+const NONINH = ['opacity', 'display', 'clip-path', 'stop-color', 'stop-opacity', 'mask', 'filter'];
+const PROPS = INHERIT.concat(NONINH);
+
+function parseDecls(str) {
+  const o = {};
+  str.split(';').forEach(d => {
+    const i = d.indexOf(':'); if (i < 0) return;
+    const p = d.slice(0, i).trim().toLowerCase();
+    const v = d.slice(i + 1).replace(/!important/i, '').trim();
+    if (p && v) o[p] = v;
+  });
+  return o;
+}
+function specificity(sel) {
+  return (sel.match(/#/g) || []).length * 100 + (sel.match(/\.|\[|:/g) || []).length * 10 + (sel.match(/(^|[\s>+~])[a-zA-Z]/g) || []).length;
+}
+function lenPt(s) {
+  if (!s) return null;
+  const m = /^\s*([-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?)\s*([a-z%]*)\s*$/i.exec(s);
+  if (!m || m[2] === '%') return null;
+  const v = parseFloat(m[1]);
+  const u = { '': 1, px: 1, pt: 1, pc: 12, mm: 72 / 25.4, cm: 72 / 2.54, in: 72 }[m[2].toLowerCase()];
+  const r = u === undefined ? v : v * u;
+  return r > 0 ? r : null;
+}
+
+/* ============================================================
+   SVG -> EPS
+   ============================================================ */
+function parseSvgText(text) {
+  text = text.replace(/^\uFEFF/, '');
+  let doc = new DOMParser().parseFromString(text, 'image/svg+xml');
+  if (doc.querySelector('parsererror')) {
+    doc = new DOMParser().parseFromString(text.replace(/&nbsp;/g, '&#160;'), 'image/svg+xml');
+    if (doc.querySelector('parsererror')) throw new Error('This file is not valid SVG/XML.');
+  }
+  if (doc.documentElement.localName !== 'svg') throw new Error('No <svg> root element found.');
+  return doc;
+}
+
+function convertSvg(text, name, opts) {
+  const doc = parseSvgText(text);
+  const root = doc.documentElement;
+  const warn = new Set();
+  const stats = { shapes: 0, gradients: 0 };
+
+  /* --- artboard --- */
+  let vb = null;
+  const vbs = root.getAttribute('viewBox');
+  if (vbs) {
+    const a = vbs.trim().split(/[\s,]+/).map(Number);
+    if (a.length === 4 && a.every(isFinite) && a[2] > 0 && a[3] > 0) vb = a;
+  }
+  let W = lenPt(root.getAttribute('width')), H = lenPt(root.getAttribute('height'));
+  if (!vb) vb = [0, 0, W || 300, H || 150];
+  if (!W && !H) { W = vb[2]; H = vb[3]; }
+  else if (W && !H) H = W * vb[3] / vb[2];
+  else if (!W && H) W = H * vb[2] / vb[3];
+  if (opts.targetLong > 0) { const k = opts.targetLong / Math.max(W, H); W *= k; H *= k; }
+  const s0 = Math.min(W / vb[2], H / vb[3]);
+  const tx = (W - vb[2] * s0) / 2, ty = (H - vb[3] * s0) / 2;
+  const BASE = [s0, 0, 0, -s0, tx - vb[0] * s0, H - ty + vb[1] * s0];   // SVG (y down) -> PostScript (y up)
+
+  /* --- id map + stylesheet --- */
+  const ids = {};
+  doc.querySelectorAll('[id]').forEach(e => { ids[e.getAttribute('id')] = e; });
+  const rules = [];
+  let css = '';
+  doc.querySelectorAll('style').forEach(s => { css += s.textContent + '\n'; });
+  css = css.replace(/\/\*[\s\S]*?\*\//g, '').replace(/@import[^;]*;/g, '')
+           .replace(/@[^{;]+\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}/g, '');
+  const rre = /([^{}]+)\{([^}]*)\}/g; let mm;
+  while ((mm = rre.exec(css))) {
+    const decl = parseDecls(mm[2]);
+    mm[1].split(',').forEach(sel => { sel = sel.trim(); if (sel) rules.push({ sel, decl, spec: specificity(sel), order: rules.length }); });
+  }
+  rules.sort((a, b) => a.spec - b.spec || a.order - b.order);
+
+  function ownStyle(e) {
+    const s = {};
+    for (const p of PROPS) { const v = e.getAttribute(p); if (v !== null) s[p] = v.trim(); }
+    for (const r of rules) { try { if (e.matches(r.sel)) Object.assign(s, r.decl); } catch (_) {} }
+    const st = e.getAttribute('style');
+    if (st) Object.assign(s, parseDecls(st));
+    return s;
+  }
+  const hrefOf = e => e.getAttribute('href') || e.getAttributeNS(XLINK, 'href') || e.getAttribute('xlink:href') || '';
+  const urlId = v => { const m = /url\(\s*['"]?#([^'")\s]+)['"]?\s*\)/.exec(v || ''); return m ? m[1] : null; };
+  const numAttr = (e, n, d = 0) => { const v = e.getAttribute(n); if (v === null) return d; const x = parseFloat(v); return isNaN(x) ? d : x; };
+
+  /* --- gradients --- */
+  function readGradient(g) {
+    const chain = []; let cur = g, guard = 0;
+    while (cur && guard++ < 10) { chain.push(cur); const h = hrefOf(cur); cur = h && h[0] === '#' ? ids[h.slice(1)] : null; }
+    const attr = n => { for (const e of chain) if (e.hasAttribute(n)) return e.getAttribute(n); return null; };
+    let stopEls = null;
+    for (const e of chain) { const ss = [...e.children].filter(c => c.localName === 'stop'); if (ss.length) { stopEls = ss; break; } }
+    if (!stopEls) return null;
+    let last = 0;
+    const stops = stopEls.map(se => {
+      const st = ownStyle(se);
+      let o = se.getAttribute('offset') || '0'; o = o.trim().endsWith('%') ? parseFloat(o) / 100 : parseFloat(o);
+      o = clamp01(isNaN(o) ? 0 : o); o = Math.max(last, o); last = o;
+      const c = parseColor(st['stop-color'] || 'black') || { r: 0, g: 0, b: 0, a: 1 };
+      let so = parseFloat(st['stop-opacity']); if (isNaN(so)) so = 1;
+      return { o, r: c.r, g: c.g, b: c.b, a: clamp01(so) * (c.a === undefined ? 1 : c.a) };
+    });
+    const units = attr('gradientUnits') || 'objectBoundingBox';
+    const usou = units === 'userSpaceOnUse';
+    const L = (n, def, base) => {
+      const v = attr(n);
+      if (v === null) return def * (usou ? base : 1);
+      const p = v.trim();
+      if (p.endsWith('%')) return parseFloat(p) / 100 * (usou ? base : 1);
+      const x = parseFloat(p); return isNaN(x) ? def * (usou ? base : 1) : x;
+    };
+    const sm = attr('spreadMethod');
+    if (sm && sm !== 'pad') warn.add('Gradient spread modes (reflect/repeat) are treated as "pad".');
+    const gr = { type: g.localName, stops, units, gt: parseTransform(attr('gradientTransform')) };
+    if (g.localName === 'linearGradient') {
+      gr.x1 = L('x1', 0, vb[2]); gr.y1 = L('y1', 0, vb[3]); gr.x2 = L('x2', 1, vb[2]); gr.y2 = L('y2', 0, vb[3]);
+    } else {
+      gr.cx = L('cx', .5, vb[2]); gr.cy = L('cy', .5, vb[3]); gr.r = L('r', .5, Math.sqrt((vb[2] ** 2 + vb[3] ** 2) / 2));
+    }
+    return gr;
+  }
+  function colorAt(stops, t) {
+    if (t <= stops[0].o) return stops[0];
+    const last = stops[stops.length - 1];
+    if (t >= last.o) return last;
+    for (let i = 1; i < stops.length; i++) {
+      if (t <= stops[i].o) {
+        const a = stops[i - 1], b = stops[i], d = b.o - a.o, u = d <= 0 ? 1 : (t - a.o) / d;
+        return { r: a.r + (b.r - a.r) * u, g: a.g + (b.g - a.g) * u, b: a.b + (b.b - a.b) * u, a: a.a + (b.a - a.a) * u };
+      }
+    }
+    return last;
+  }
+
+  /* --- output helpers --- */
+  const out = [];
+  const emit = l => out.push(l);
+  const setColor = c => {
+    if (opts.cmyk) { const q = toCMYK(c.r, c.g, c.b); return q.map(f4).join(' ') + ' setcmykcolor'; }
+    return f4(c.r / 255) + ' ' + f4(c.g / 255) + ' ' + f4(c.b / 255) + ' setrgbcolor';
+  };
+  function resolvePaint(v, inh) {
+    v = (v || '').trim();
+    if (!v || v === 'none') return null;
+    const um = /^url\(\s*['"]?#([^'")\s]+)['"]?\s*\)\s*(.*)$/.exec(v);
+    if (um) {
+      const g = ids[um[1]];
+      if (g && (g.localName === 'linearGradient' || g.localName === 'radialGradient')) {
+        const gr = readGradient(g);
+        if (gr) return gr.stops.length === 1 ? { c: { r: gr.stops[0].r, g: gr.stops[0].g, b: gr.stops[0].b, a: gr.stops[0].a } } : { grad: gr };
+      } else if (g && g.localName === 'pattern') warn.add('Pattern fills are not supported and were skipped.');
+      return um[2] ? resolvePaint(um[2], inh) : null;
+    }
+    if (v.toLowerCase() === 'currentcolor') v = inh.color || 'black';
+    const c = parseColor(v);
+    return c ? { c } : null;
+  }
+
+  function emitGradient(gr, segsU, m, eo, alpha) {
+    const bb = bboxOf(segsU), bw = bb.x1 - bb.x0, bh = bb.y1 - bb.y0;
+    const col = t => { const c = colorAt(gr.stops, t); return blend(c, clamp01(c.a * alpha)); };
+    const dev = xformSegs(segsU, m);
+    let G;
+    if (gr.units === 'objectBoundingBox') {
+      if (bw <= 0 || bh <= 0) return;
+      G = mul([bw, 0, 0, bh, bb.x0, bb.y0], gr.gt);
+    } else G = gr.gt;
+    const Gi = inv(G);
+    const solid = t => { emit(setColor(col(t))); emit(psPath(dev)); emit(eo ? 'eofill' : 'fill'); };
+    if (!Gi) { solid(1); return; }
+    const T = mul(m, G);
+    const corners = [[bb.x0, bb.y0], [bb.x1, bb.y0], [bb.x1, bb.y1], [bb.x0, bb.y1]].map(p => app(Gi, p[0], p[1]));
+    stats.gradients++;
+    const poly = (pts, c) => { emit(setColor(c)); emit(psPath(xformSegs(polySegs(pts), T)) + '\nfill'); };
+    const circ = (cx, cy, r, c) => { emit(setColor(c)); emit(psPath(xformSegs(ellipseSegs(cx, cy, r, r), T)) + '\nfill'); };
+    let body = [];
+    const N = GSTEPS;
+    if (gr.type === 'linearGradient') {
+      const vx = gr.x2 - gr.x1, vy = gr.y2 - gr.y1, L2 = vx * vx + vy * vy;
+      if (!L2) { solid(1); return; }
+      const tv = p => ((p[0] - gr.x1) * vx + (p[1] - gr.y1) * vy) / L2;
+      const ts = corners.map(tv);
+      const tmin = Math.min(...ts) - 0.001, tmax = Math.max(...ts) + 0.001;
+      const rmax = Math.max(...corners.map(p => Math.hypot(p[0] - gr.x1, p[1] - gr.y1)));
+      const vl = Math.sqrt(L2), nx = -vy / vl, ny = vx / vl, E = rmax * 2 + 1;
+      const bands = [];
+      if (tmin < 0) bands.push({ t0: tmin, c: col(0) });
+      for (let i = 0; i < N; i++) bands.push({ t0: i / N, c: col((i + 0.5) / N) });
+      if (tmax > 1) bands.push({ t0: 1, c: col(1) });
+      const tEnd = Math.max(tmax, 1);
+      let started = false;
+      emit('gsave'); emit(psPath(dev)); emit(eo ? 'eoclip' : 'clip'); emit('newpath');
+      bands.forEach((b, i) => {
+        const t1 = i + 1 < bands.length ? bands[i + 1].t0 : tEnd;
+        if (t1 < tmin) return;
+        if (b.t0 > tmax) return;
+        const t0 = started ? b.t0 : Math.min(b.t0, tmin);
+        started = true;
+        const q = t => [gr.x1 + t * vx, gr.y1 + t * vy];
+        const a = q(t0), z = q(tEnd);
+        poly([[a[0] + nx * E, a[1] + ny * E], [z[0] + nx * E, z[1] + ny * E], [z[0] - nx * E, z[1] - ny * E], [a[0] - nx * E, a[1] - ny * E]], b.c);
+      });
+      emit('grestore');
+    } else {
+      if (gr.r <= 0) { solid(1); return; }
+      const tmax = Math.max(...corners.map(p => Math.hypot(p[0] - gr.cx, p[1] - gr.cy))) / gr.r;
+      emit('gsave'); emit(psPath(dev)); emit(eo ? 'eoclip' : 'clip'); emit('newpath');
+      if (tmax > 1) circ(gr.cx, gr.cy, gr.r * tmax * 1.002, col(1));
+      const iMax = Math.min(N - 1, Math.ceil(Math.min(tmax, 1) * N) - 1);
+      for (let i = iMax; i >= 0; i--) circ(gr.cx, gr.cy, gr.r * (i + 1) / N, col((i + 0.5) / N));
+      emit('grestore');
+    }
+  }
+
+  function shapeSegs(e, tag) {
+    switch (tag) {
+      case 'path': return parsePathData(e.getAttribute('d') || '');
+      case 'rect': {
+        const x = numAttr(e, 'x'), y = numAttr(e, 'y'), w = numAttr(e, 'width'), h = numAttr(e, 'height');
+        if (w <= 0 || h <= 0) return null;
+        let rx = e.hasAttribute('rx') ? numAttr(e, 'rx') : null, ry = e.hasAttribute('ry') ? numAttr(e, 'ry') : null;
+        if (rx === null && ry === null) rx = ry = 0; else if (rx === null) rx = ry; else if (ry === null) ry = rx;
+        return rectSegs(x, y, w, h, Math.min(Math.abs(rx), w / 2), Math.min(Math.abs(ry), h / 2));
+      }
+      case 'circle': { const r = numAttr(e, 'r'); return r > 0 ? ellipseSegs(numAttr(e, 'cx'), numAttr(e, 'cy'), r, r) : null; }
+      case 'ellipse': { const rx = numAttr(e, 'rx'), ry = numAttr(e, 'ry'); return rx > 0 && ry > 0 ? ellipseSegs(numAttr(e, 'cx'), numAttr(e, 'cy'), rx, ry) : null; }
+      case 'line': return [['M', numAttr(e, 'x1'), numAttr(e, 'y1')], ['L', numAttr(e, 'x2'), numAttr(e, 'y2')]];
+      case 'polyline': case 'polygon': {
+        const p = (e.getAttribute('points') || '').trim().split(/[\s,]+/).map(Number).filter(v => !isNaN(v));
+        if (p.length < 4) return null;
+        const s = [['M', p[0], p[1]]];
+        for (let i = 2; i + 1 < p.length; i += 2) s.push(['L', p[i], p[i + 1]]);
+        if (tag === 'polygon') s.push(['Z']);
+        return s;
+      }
+    }
+    return null;
+  }
+
+  function buildClip(ce, m) {
+    if (ce.getAttribute('clipPathUnits') === 'objectBoundingBox') { warn.add('clipPathUnits="objectBoundingBox" is not supported; that clip was ignored.'); return undefined; }
+    const cm = mul(m, parseTransform(ce.getAttribute('transform')));
+    let segs = [], eo = false;
+    for (const ch of ce.children) {
+      const tag = ch.localName;
+      const cs = ownStyle(ch);
+      if (cs.display === 'none') continue;
+      let cmm = mul(cm, parseTransform(ch.getAttribute('transform')));
+      let target = ch, ttag = tag;
+      if (tag === 'use') {
+        const h = hrefOf(ch); const t = h[0] === '#' ? ids[h.slice(1)] : null; if (!t) continue;
+        cmm = mul(cmm, [1, 0, 0, 1, numAttr(ch, 'x'), numAttr(ch, 'y')]); target = t; ttag = t.localName;
+        cmm = mul(cmm, parseTransform(t.getAttribute('transform')));
+      }
+      const s = shapeSegs(target, ttag);
+      if (s && s.length) segs = segs.concat(xformSegs(s, cmm));
+      if ((cs['clip-rule'] || '') === 'evenodd') eo = true;
+    }
+    return { segs, eo };
+  }
+
+  function drawShape(e, tag, inh, m, op) {
+    const segsU = shapeSegs(e, tag);
+    if (!segsU || !segsU.length) return;
+    if (inh.visibility === 'hidden' || inh.visibility === 'collapse') return;
+    const eo = (inh['fill-rule'] || '') === 'evenodd';
+    const foRaw = parseFloat(inh['fill-opacity']), soRaw = parseFloat(inh['stroke-opacity']);
+    const fo = clamp01(isNaN(foRaw) ? 1 : foRaw) * op, so = clamp01(isNaN(soRaw) ? 1 : soRaw) * op;
+    const fillP = tag === 'line' ? null : resolvePaint(inh.fill === undefined ? 'black' : inh.fill, inh);
+    const strokeP = resolvePaint(inh.stroke === undefined ? 'none' : inh.stroke, inh);
+    const dev = xformSegs(segsU, m);
+    stats.shapes++;
+    let fillDone = false, fillSolidText = null;
+
+    if (fillP && fillP.c) {
+      const a = clamp01(fillP.c.a * fo);
+      if (a > 0) {
+        if (a < 1) warn.add('Transparency was flattened (blended onto white) — plain EPS has no opacity.');
+        fillSolidText = setColor(blend(fillP.c, a));
+      }
+    } else if (fillP && fillP.grad) {
+      if (fo < 1) warn.add('Transparency was flattened (blended onto white) — plain EPS has no opacity.');
+      emitGradient(fillP.grad, segsU, m, eo, fo);
+      fillDone = true;
+    }
+
+    // stroke
+    let strokeText = null;
+    if (strokeP) {
+      let sc = strokeP.c;
+      if (strokeP.grad) { sc = colorAt(strokeP.grad.stops, 0.5); warn.add('Gradient strokes were converted to a single solid colour.'); }
+      const a = clamp01(sc.a * so);
+      let w = parseFloat(inh['stroke-width']); if (isNaN(w)) w = 1;
+      const scale = Math.sqrt(Math.abs(m[0] * m[3] - m[1] * m[2]));
+      w *= scale;
+      if (a > 0 && w > 0) {
+        if (a < 1) warn.add('Transparency was flattened (blended onto white) — plain EPS has no opacity.');
+        const cap = { butt: 0, round: 1, square: 2 }[inh['stroke-linecap']] ?? 0;
+        const join = { miter: 0, round: 1, bevel: 2 }[inh['stroke-linejoin']] ?? 0;
+        let ml = parseFloat(inh['stroke-miterlimit']); if (isNaN(ml) || ml < 1) ml = 4;
+        const lines = [setColor(blend(sc, a)), f3(w) + ' setlinewidth', cap + ' setlinecap', join + ' setlinejoin', f3(ml) + ' setmiterlimit'];
+        let da = (inh['stroke-dasharray'] || '').trim();
+        if (da && da !== 'none') {
+          let arr = da.split(/[\s,]+/).map(parseFloat).filter(v => !isNaN(v) && v >= 0);
+          if (arr.length && arr.some(v => v > 0)) {
+            if (arr.length % 2) arr = arr.concat(arr);
+            lines.push('[' + arr.map(v => f3(v * scale)).join(' ') + '] ' + f3((parseFloat(inh['stroke-dashoffset']) || 0) * scale) + ' setdash');
+          } else lines.push('[] 0 setdash');
+        } else lines.push('[] 0 setdash');
+        strokeText = lines.join('\n');
+      }
+    }
+
+    const P = psPath(dev), fillOp = eo ? 'eofill' : 'fill';
+    if (fillSolidText && strokeText) {
+      emit(P); emit('gsave'); emit(fillSolidText); emit(fillOp); emit('grestore'); emit(strokeText); emit('stroke');
+    } else if (fillSolidText) {
+      emit(fillSolidText); emit(P); emit(fillOp);
+    } else if (strokeText) {
+      emit(P); emit(strokeText); emit('stroke');
+    } else if (fillDone) { /* gradient only */ }
+    if (fillDone && strokeText) { emit(P); emit(strokeText); emit('stroke'); }
+  }
+
+  /* --- tree walk --- */
+  let depth = 0;
+  function walkChildren(node, st) { for (const c of node.children) walk(c, st); }
+  function walk(e, st, isRoot) {
+    if (e.nodeType !== 1 || depth > 60) return;
+    const tag = e.localName;
+    const own = ownStyle(e);
+    if (own.display === 'none') return;
+    if (['defs', 'clipPath', 'mask', 'symbol', 'linearGradient', 'radialGradient', 'pattern', 'style', 'title', 'desc', 'metadata', 'marker', 'filter', 'script', 'foreignObject'].includes(tag)) return;
+    if (own.mask && own.mask !== 'none') warn.add('Masks are not supported and were ignored.');
+    if (own.filter && own.filter !== 'none') warn.add('Filters/effects (blur, shadows…) are not supported and were ignored.');
+    const inh = Object.assign({}, st.inh);
+    for (const p of INHERIT) if (own[p] !== undefined && own[p] !== 'inherit') inh[p] = own[p];
+    const m = mul(st.m, parseTransform(e.getAttribute('transform')));
+    let op = st.op;
+    if (own.opacity !== undefined) { const o = parseFloat(own.opacity); if (!isNaN(o)) op *= clamp01(o); }
+
+    let clipped = false;
+    const cpv = own['clip-path'];
+    if (cpv && cpv !== 'none') {
+      const id = urlId(cpv), ce = id && ids[id];
+      if (ce && ce.localName === 'clipPath') {
+        const cl = buildClip(ce, m);
+        if (cl === null || (cl && !cl.segs.length)) return;            // clipped away entirely
+        if (cl) { emit('gsave'); emit(psPath(cl.segs)); emit(cl.eo ? 'eoclip' : 'clip'); emit('newpath'); clipped = true; }
+      }
+    }
+    depth++;
+    const s2 = { m, inh, op };
+    switch (tag) {
+      case 'svg':
+        if (isRoot) walkChildren(e, s2);
+        else walkChildren(e, { m: mul(m, [1, 0, 0, 1, numAttr(e, 'x'), numAttr(e, 'y')]), inh, op });
+        break;
+      case 'g': case 'a': walkChildren(e, s2); break;
+      case 'switch': { const first = [...e.children].find(c => c.nodeType === 1); if (first) walk(first, s2); break; }
+      case 'use': {
+        const h = hrefOf(e), t = h[0] === '#' ? ids[h.slice(1)] : null;
+        if (!t) break;
+        const um = mul(m, [1, 0, 0, 1, numAttr(e, 'x'), numAttr(e, 'y')]);
+        const s3 = { m: um, inh, op };
+        if (t.localName === 'symbol' || t.localName === 'svg') walkChildren(t, s3); else walk(t, s3);
+        break;
+      }
+      case 'path': case 'rect': case 'circle': case 'ellipse': case 'line': case 'polyline': case 'polygon':
+        drawShape(e, tag, inh, m, op); break;
+      case 'text': warn.add('<text> found — text is NOT exported. Convert text to outlines in your editor first (stock sites require it).'); break;
+      case 'image': warn.add('Embedded raster <image> elements are not exported.'); break;
+    }
+    depth--;
+    if (clipped) emit('grestore');
+  }
+
+  const inh0 = {};
+  walk(root, { m: BASE, inh: inh0, op: 1 }, true);
+  if (!stats.shapes) throw new Error('No drawable vector shapes were found in this SVG.');
+
+  /* --- assemble EPS --- */
+  const esc = s => String(s).replace(/[^\x20-\x7E]/g, '_').replace(/([()\\])/g, '\\$1');
+  const now = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  const h12 = now.getHours() % 12 || 12;
+  const date = `${now.getMonth() + 1}/${now.getDate()}/${now.getFullYear()} ${h12}:${pad(now.getMinutes())} ${now.getHours() >= 12 ? 'PM' : 'AM'}`;
+  const bbW = Math.ceil(W), bbH = Math.ceil(H);
+  const head = [
+    '%!PS-Adobe-3.0 EPSF-3.0',
+    ...(opts.aiHeader
+      ? ['%%Creator: Adobe Illustrator(R) 10.0', '%%AI8_CreatorVersion: 10.0', '%%For: (SVG to EPS Converter) ()']
+      : ['%%Creator: SVG to EPS Converter']),
+    '%%Title: (' + esc(name.replace(/\.svg$/i, '') + '.eps') + ')',
+    '%%CreationDate: ' + date,
+    `%%BoundingBox: 0 0 ${bbW} ${bbH}`,
+    `%%HiResBoundingBox: 0 0 ${f3(W)} ${f3(H)}`,
+    ...(opts.aiHeader ? ['%%DocumentProcessColors: Cyan Magenta Yellow Black'] : []),
+    '%%LanguageLevel: 2',
+    '%%Pages: 1',
+    '%%EndComments',
+    '%%BeginProlog',
+    '%%EndProlog',
+    '%%BeginSetup',
+    '%%EndSetup',
+    '%%Page: 1 1',
+    `%%PageBoundingBox: 0 0 ${bbW} ${bbH}`,
+    '%%BeginPageSetup',
+    '%%EndPageSetup',
+    'gsave',
+    `newpath 0 0 moveto ${bbW} 0 lineto ${bbW} ${bbH} lineto 0 ${bbH} lineto closepath clip newpath`,
+    '1 setflat'
+  ];
+  const tail = ['grestore', 'showpage', '%%PageTrailer', '%%Trailer', '%%EOF', ''];
+  return { eps: head.concat(out, tail).join('\n'), W, H, vb, warnings: [...warn], stats };
+}
+
+/* ============================================================
+   JPG preview (>= N px on the longest side, >= M bytes)
+   ============================================================ */
+function svgDataUrl(text, vb, pw, ph) {
+  const doc = new DOMParser().parseFromString(text.replace(/^\uFEFF/, ''), 'image/svg+xml');
+  const r = doc.documentElement;
+  r.setAttribute('viewBox', vb.join(' '));
+  r.setAttribute('width', pw); r.setAttribute('height', ph);
+  r.removeAttribute('x'); r.removeAttribute('y');
+  return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(doc));
+}
+const loadImg = src => new Promise((res, rej) => {
+  const i = new Image();
+  i.onload = () => res(i);
+  i.onerror = () => rej(new Error('The browser could not render this SVG for the JPG preview.'));
+  i.src = src;
+});
+async function renderCanvas(text, vb, pw, ph) {
+  const img = await loadImg(svgDataUrl(text, vb, pw, ph));
+  const c = document.createElement('canvas'); c.width = pw; c.height = ph;
+  const x = c.getContext('2d');
+  x.fillStyle = '#ffffff'; x.fillRect(0, 0, pw, ph);
+  x.drawImage(img, 0, 0, pw, ph);
+  return c;
+}
+const canvasBlob = (c, q) => new Promise((res, rej) => c.toBlob(b => b ? res(b) : rej(new Error('JPEG encoding failed.')), 'image/jpeg', q));
+
+async function makePreview(text, info, o) {
+  const aspect = info.W / info.H;
+  const MAXPX = 10000;
+  // L = the SHORTEST side; the longest side follows the aspect ratio and is capped at 10000 px
+  const dims = L => {
+    let w, h;
+    if (aspect >= 1) { h = L; w = Math.round(L * aspect); } else { w = L; h = Math.round(L / aspect); }
+    const big = Math.max(w, h);
+    if (big > MAXPX) { const k = MAXPX / big; w = Math.floor(w * k); h = Math.floor(h * k); }
+    return [Math.max(1, w), Math.max(1, h)];
+  };
+  const notes = [];
+  const done = (canvas, blob, pw, ph) => ({ canvas, blob, pw, ph, notes, reached: blob.size >= o.minBytes });
+  let [pw, ph] = dims(o.minPx);
+  if (Math.min(pw, ph) < o.minPx) notes.push('Extreme aspect ratio: both sides cannot be ≥ ' + o.minPx + ' px while staying ≤ 10000 px');
+  let canvas = await renderCanvas(text, info.vb, pw, ph), blob;
+  for (const q of [0.92, 0.97, 1]) {
+    blob = await canvasBlob(canvas, q);
+    if (blob.size >= o.minBytes) { if (q > 0.92) notes.push('JPEG quality raised to ' + Math.round(q * 100) + '%'); return done(canvas, blob, pw, ph); }
+  }
+  if (o.enlarge) {
+    const seen = new Set([o.minPx]);
+    for (const k of [1.25, 1.5, 2]) {
+      const L = Math.min(MAXPX, Math.round(o.minPx * k));
+      if (seen.has(L)) continue; seen.add(L);
+      [pw, ph] = dims(L);
+      canvas = await renderCanvas(text, info.vb, pw, ph);
+      for (const q of [0.95, 1]) {
+        blob = await canvasBlob(canvas, q);
+        if (blob.size >= o.minBytes) { notes.push(`Enlarged to ${pw}×${ph}px to reach the size`); return done(canvas, blob, pw, ph); }
+      }
+    }
+    notes.push(`Enlarged to ${pw}×${ph}px`);
+  }
+  if (o.grain) {
+    const ctx = canvas.getContext('2d');
+    const base = ctx.getImageData(0, 0, pw, ph);
+    for (const amp of [1, 2, 3, 4, 6, 8]) {
+      const d = new ImageData(new Uint8ClampedArray(base.data), pw, ph), px = d.data;
+      for (let i = 0; i < px.length; i += 4) {
+        px[i] += (Math.random() * 2 - 1) * amp; px[i + 1] += (Math.random() * 2 - 1) * amp; px[i + 2] += (Math.random() * 2 - 1) * amp;
+      }
+      ctx.putImageData(d, 0, 0);
+      blob = await canvasBlob(canvas, 0.95);
+      if (blob.size >= o.minBytes) { notes.push('Invisible grain added (±' + amp + '/255)'); return done(canvas, blob, pw, ph); }
+    }
+    notes.push('Grain added but the size was still not reached');
+  }
+  return done(canvas, blob, pw, ph);
+}
+function thumbOf(canvas) {
+  const w = 480, h = Math.max(1, Math.round(canvas.height * w / canvas.width));
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  c.getContext('2d').drawImage(canvas, 0, 0, w, h);
+  return c.toDataURL('image/jpeg', 0.85);
+}
+
+/* ============================================================
+   EPS preview bitmap (standard EPSI %%BeginPreview block) — raises the EPS
+   file size legitimately so it meets the stock site's minimum
+   ============================================================ */
+const HEX = Array.from({ length: 256 }, (_, i) => i.toString(16).padStart(2, '0'));
+function previewBlock(gray, pw, ph) {
+  const per = 64, lines = Math.ceil(gray.length / per);
+  const out = ['%%BeginPreview: ' + pw + ' ' + ph + ' 8 ' + lines];
+  for (let i = 0; i < gray.length; i += per) {
+    let l = '% ';
+    const end = Math.min(gray.length, i + per);
+    for (let j = i; j < end; j++) l += HEX[gray[j]];
+    out.push(l);
+  }
+  out.push('%%EndPreview');
+  return out.join('\n') + '\n';
+}
+function addEpsPreview(eps, canvas, info, minBytes) {
+  if (eps.length >= minBytes) return { eps, added: 0 };
+  const aspect = info.W / info.H;
+  let px = Math.ceil((minBytes - eps.length) / 2.046875) + 2000, res = eps, pw = 0, ph = 0;
+  for (let tries = 0; tries < 4; tries++) {
+    px = Math.min(px, 40e6);
+    ph = Math.max(1, Math.ceil(Math.sqrt(px / aspect))); pw = Math.max(1, Math.ceil(px / ph));
+    const c = document.createElement('canvas'); c.width = pw; c.height = ph;
+    const x = c.getContext('2d');
+    x.fillStyle = '#fff'; x.fillRect(0, 0, pw, ph);
+    x.imageSmoothingQuality = 'high';
+    x.drawImage(canvas, 0, 0, pw, ph);
+    const d = x.getImageData(0, 0, pw, ph).data, gray = new Uint8Array(pw * ph);
+    for (let i = 0, j = 0; i < d.length; i += 4, j++) gray[j] = (d[i] * 299 + d[i + 1] * 587 + d[i + 2] * 114) / 1000;
+    res = eps.replace('\n%%EndComments\n', '\n' + previewBlock(gray, pw, ph) + '%%EndComments\n');
+    if (res.length >= minBytes) break;
+    px += (minBytes - res.length) / 2 + 2000;
+  }
+  return { eps: res, added: res.length - eps.length, pw, ph };
+}
+
+/* ============================================================
+   Saving files
+   ============================================================ */
+let dl = null;   // `downloads` capability, when running as a published Claude artifact
+(async () => {
+  try { if (window.claude && window.claude.use) dl = await window.claude.use('downloads'); } catch (_) { dl = null; }
+  render();
+})();
+
+async function saveBlob(filename, blob) {
+  if (dl) {
+    try { await dl.save({ filename, data: blob }); toast('Saved ' + filename); }
+    catch (e) {
+      if (e && e.code === 'declined') return;
+      toast('Could not save: ' + ((e && e.message) || 'unknown error'));
+    }
+    return;
+  }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+const baseName = n => n.replace(/\.svg$/i, '').replace(/[^\w\-. ]+/g, '_') || 'design';
+async function zipOf(items) {
+  if (typeof JSZip === 'undefined') throw new Error('ZIP library failed to load (check your connection).');
+  const zip = new JSZip(), used = {};
+  for (const r of items) {
+    let b = baseName(r.name); if (used[b]) b += '_' + (++used[b]); else used[b] = 1;
+    zip.file(b + '.eps', r.epsBlob);
+    zip.file(b + '.jpg', r.jpgBlob);
+  }
+  return zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+}
+
+/* ============================================================
+   UI
+   ============================================================ */
+const results = [];   // {id, name, status:'busy'|'ok'|'error', ...}
+let seq = 0;
+
+function readOpts() {
+  const val = (id, d) => { const v = parseFloat($(id).value); return isNaN(v) ? d : v; };
+  const unit = $('#unit').value === 'MB' ? 1048576 : 1024;
+  return {
+    cmyk: $('#mode').value === 'cmyk',
+    aiHeader: $('#hdr').value === 'ai',
+    targetLong: Math.max(0, val('#target', 0)),
+    minPx: Math.min(10000, Math.max(100, Math.round(val('#minpx', 2000)))),
+    minBytes: Math.max(0, val('#minsize', 0.5)) * unit,
+    epsMinBytes: Math.max(0, val('#epsmin', 0.5)) * 1048576,
+    epsPad: $('#epspad').checked,
+    enlarge: $('#enlarge').checked,
+    grain: $('#grain').checked
+  };
+}
+
+async function processFile(file) {
+  const r = { id: ++seq, name: file.name, status: 'busy' };
+  results.push(r); render();
+  try {
+    const o = readOpts();
+    const text = await file.text();
+    const info = convertSvg(text, file.name, o);
+    r.info = info; r.opts = o;
+    const pv = await makePreview(text, info, o);
+    let epsText = info.eps;
+    if (o.epsPad && o.epsMinBytes) {
+      // 5 % safety margin: the site may count MB as 1,000,000 or 1,048,576 bytes
+      const ep = addEpsPreview(epsText, pv.canvas, info, Math.ceil(o.epsMinBytes * 1.05));
+      epsText = ep.eps;
+      r.epsNote = ep.added ? 'EPS preview bitmap embedded (' + ep.pw + '×' + ep.ph + ' gray) to reach the minimum size' : '';
+    }
+    r.epsBlob = new Blob([epsText], { type: 'application/postscript' });
+    r.jpgBlob = pv.blob; r.pw = pv.pw; r.ph = pv.ph; r.notes = pv.notes; r.reached = pv.reached;
+    r.thumb = thumbOf(pv.canvas);
+    r.status = 'ok';
+  } catch (e) {
+    r.status = 'error'; r.error = (e && e.message) || String(e);
+  }
+  render();
+}
+
+async function handleFiles(list) {
+  const files = [...list].filter(f => /\.svg$/i.test(f.name) || f.type === 'image/svg+xml');
+  if (!files.length) { toast('Please choose .svg files.'); return; }
+  for (const f of files) await processFile(f);       // sequential keeps memory low
+}
+
+function render() {
+  const box = $('#results');
+  box.replaceChildren();
+  const ready = results.filter(r => r.status === 'ok');
+  if (results.length) {
+    box.append(el('div', { class: 'bar' },
+      el('h2', { text: 'Results (' + results.length + ')' }),
+      el('div', { class: 'actions', style: 'margin:0' },
+        ready.length > 1 && el('button', { class: 'primary', onclick: async () => {
+          try { await saveBlob('svg-to-eps10.zip', await zipOf(ready)); } catch (e) { toast(e.message); }
+        }, text: 'Download all (.zip)' }),
+        el('button', { onclick: () => { results.length = 0; render(); }, text: 'Clear' }))));
+  }
+  results.forEach(r => box.append(card(r)));
+  $('#dlnote').textContent = dl
+    ? 'Note: in this view the browser cannot save a bare .eps file, so each download is a ZIP containing the .eps and the .jpg preview (unzip and upload both).'
+    : '';
+}
+
+function card(r) {
+  if (r.status === 'busy') {
+    return el('div', { class: 'card item', style: 'grid-template-columns:1fr' },
+      el('div', { class: 'busy' }, el('span', { class: 'spin' }), 'Converting ' + r.name + '…'));
+  }
+  if (r.status === 'error') {
+    return el('div', { class: 'card item', style: 'grid-template-columns:1fr' },
+      el('div', { class: 'name', text: r.name }), el('div', { class: 'err', text: r.error }));
+  }
+  const o = r.opts;
+  const epsOk = r.epsBlob.size >= o.epsMinBytes && r.epsBlob.size <= 80 * 1048576;
+  const pxOk = Math.min(r.pw, r.ph) >= o.minPx && Math.max(r.pw, r.ph) <= 10000, sizeOk = r.jpgBlob.size >= o.minBytes;
+  const b = baseName(r.name);
+  return el('div', { class: 'card item' },
+    el('div', { class: 'thumb' }, el('img', { src: r.thumb, alt: 'Preview of ' + r.name })),
+    el('div', {},
+      el('div', { class: 'name', text: r.name }),
+      el('div', { class: 'chips' },
+        el('span', { class: 'chip ' + (epsOk ? 'ok' : 'bad'), text: (epsOk ? '✓ ' : '✗ ') + 'EPS ' + fmtBytes(r.epsBlob.size) + ' · ' + Math.round(r.info.W) + '×' + Math.round(r.info.H) + ' pt' }),
+        el('span', { class: 'chip ' + (o.cmyk ? 'warn' : 'ok'), text: (o.cmyk ? 'CMYK (Freepik needs RGB)' : '✓ RGB') + ' · ' + r.info.stats.shapes + ' shapes' + (r.info.stats.gradients ? ' · ' + r.info.stats.gradients + ' gradients' : '') }),
+        el('span', { class: 'chip ' + (pxOk ? 'ok' : 'bad'), text: (pxOk ? '✓ ' : '✗ ') + 'JPG ' + r.pw + '×' + r.ph + ' px' }),
+        el('span', { class: 'chip ' + (sizeOk ? 'ok' : 'bad'), text: (sizeOk ? '✓ ' : '✗ ') + 'JPG ' + fmtBytes(r.jpgBlob.size) })),
+      (r.notes && r.notes.length) || r.epsNote ? el('div', { class: 'hint', text: [].concat(r.notes || [], r.epsNote || []).join(' · ') }) : null,
+      r.info.warnings.length ? el('div', { class: 'warns' }, r.info.warnings.map(w => el('div', { text: '⚠ ' + w }))) : null,
+      el('div', { class: 'actions' },
+        el('button', { class: 'primary', onclick: async () => {
+          try { await saveBlob(b + '.zip', await zipOf([r])); } catch (e) { toast(e.message); }
+        }, text: 'Download EPS + JPG (.zip)' }),
+        el('button', { onclick: () => saveBlob(b + '.jpg', r.jpgBlob), text: 'JPG only' }),
+        !dl ? el('button', { onclick: () => saveBlob(b + '.eps', r.epsBlob), text: 'EPS only' }) : null)));
+}
+
+/* --- drop zone --- */
+const drop = $('#drop'), fileIn = $('#file');
+drop.addEventListener('click', () => fileIn.click());
+drop.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileIn.click(); } });
+fileIn.addEventListener('change', () => { handleFiles(fileIn.files); fileIn.value = ''; });
+['dragenter', 'dragover'].forEach(t => window.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach(t => window.addEventListener(t, e => { e.preventDefault(); if (t === 'drop' || e.target === document.documentElement) drop.classList.remove('over'); }));
+window.addEventListener('drop', e => { if (e.dataTransfer && e.dataTransfer.files.length) handleFiles(e.dataTransfer.files); });
+</script>
+</body>
+</html>
