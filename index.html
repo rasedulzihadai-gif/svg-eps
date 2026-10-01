@@ -76,8 +76,7 @@
   }
   .status-dot { width: 7px; height: 7px; border-radius: 50%; background: #20a06d; box-shadow: 0 0 0 4px #dff4e9; }
 
-  .hero { padding: 76px 0 43px; max-width: 760px; }
-  .eyebrow, .section-kicker, .group-label {
+  .section-kicker, .group-label {
     display: block;
     color: var(--ink-faint);
     font-size: 10px;
@@ -86,18 +85,7 @@
     line-height: 1.2;
     text-transform: uppercase;
   }
-  .hero h1 {
-    max-width: 720px;
-    margin: 13px 0 14px;
-    font-size: clamp(42px, 5.25vw, 64px);
-    font-weight: 650;
-    line-height: .99;
-    letter-spacing: -.065em;
-  }
-  .hero h1 em { color: var(--accent); font-style: normal; }
-  .sub { max-width: 585px; margin: 0; color: var(--ink-soft); font-size: 16px; line-height: 1.65; }
-
-  .workbench { display: grid; grid-template-columns: minmax(0, 1.37fr) minmax(330px, .83fr); gap: 18px; align-items: stretch; }
+  .workbench { display: grid; grid-template-columns: minmax(0, 1.37fr) minmax(330px, .83fr); gap: 18px; align-items: stretch; padding-top: 56px; }
   .card, .upload-panel {
     border: 1px solid var(--line);
     border-radius: 16px;
@@ -277,8 +265,7 @@
   .toast.show { opacity: 1; transform: translate(-50%, 0); }
 
   @media (max-width: 850px) {
-    .hero { padding: 56px 0 35px; }
-    .workbench { grid-template-columns: 1fr; }
+    .workbench { grid-template-columns: 1fr; padding-top: 40px; }
     .upload-panel { min-height: 390px; }
     .drop { min-height: 280px; }
   }
@@ -287,9 +274,7 @@
     .topbar { height: 64px; }
     .privacy { font-size: 0; }
     .privacy .status-dot { width: 8px; height: 8px; }
-    .hero { padding: 47px 0 31px; }
-    .hero h1 { font-size: 42px; }
-    .sub { font-size: 14px; }
+    .workbench { padding-top: 30px; }
     .upload-panel, .settings-card { padding: 20px; border-radius: 13px; }
     .upload-panel { min-height: 365px; }
     .drop { min-height: 250px; margin-top: 20px; padding: 28px 16px; }
@@ -318,13 +303,7 @@
     <div class="privacy"><span class="status-dot" aria-hidden="true"></span>Processed locally</div>
   </header>
 
-  <section class="hero" aria-labelledby="page-title">
-    <div class="eyebrow">SVG / EPS converter</div>
-    <h1 id="page-title">SVG to EPS,<br><em>without the detours.</em></h1>
-    <p class="sub">Create clean EPS exports and high-resolution JPG previews in your browser. Your files stay on this device from start to finish.</p>
-  </section>
-
-  <main class="workbench">
+  <main class="workbench" aria-label="SVG conversion workspace">
     <section class="upload-panel" aria-labelledby="upload-title">
       <div class="section-head"><div><span class="section-kicker">01 — Source files</span><h2 id="upload-title">Add SVG artwork</h2><p>Drop one file or a complete batch.</p></div></div>
       <div class="drop" id="drop" tabindex="0" role="button" aria-label="Choose SVG files">
